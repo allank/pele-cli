@@ -2,8 +2,19 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-fn bin() -> Command {
+fn raw() -> Command {
     Command::new(env!("CARGO_BIN_EXE_pele-cli"))
+}
+
+/// `pele-cli render ...`
+fn bin() -> Command {
+    let mut command = raw();
+    command.arg("render");
+    command
+}
+
+fn json(bytes: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(bytes).unwrap_or_else(|e| panic!("not JSON ({e}): {}", String::from_utf8_lossy(bytes)))
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -250,4 +261,152 @@ fn tempdir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("pele-cli-test-{}-{:?}", std::process::id(), std::thread::current().id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+// Murli output contract: the success envelope goes to stdout, the error envelope to stderr.
+
+#[test]
+fn piped_success_prints_the_envelope_with_path_and_size() {
+    let out = tempdir().join("env.png");
+    let run = bin().arg(fixture("flowchart.mmd")).arg("-o").arg(&out).output().unwrap();
+    assert!(run.status.success());
+    assert!(run.stderr.is_empty());
+    let envelope = json(&run.stdout);
+    assert_eq!(envelope["status"], "ok");
+    assert_eq!(envelope["schema_version"], "1.0");
+    assert_eq!(envelope["tool_version"], env!("CARGO_PKG_VERSION"));
+    assert!(envelope["message"].as_str().unwrap().starts_with("Wrote "));
+    let png = load(&out);
+    assert_eq!(envelope["result"]["path"], out.to_str().unwrap());
+    assert_eq!(envelope["result"]["width"], png.width());
+    assert_eq!(envelope["result"]["height"], png.height());
+}
+
+#[test]
+fn text_output_prints_readable_status_not_json() {
+    let out = tempdir().join("text.png");
+    let run = bin().arg(fixture("flowchart.mmd")).args(["--output", "text", "-o"]).arg(&out).output().unwrap();
+    assert!(run.status.success());
+    let stdout = String::from_utf8(run.stdout).unwrap();
+    assert!(stdout.starts_with("Wrote "), "{stdout}");
+    assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_err());
+}
+
+#[test]
+fn murli_flags_work_after_the_subcommand_and_dry_run_writes_nothing() {
+    let out = tempdir().join("dry.png");
+    let run = bin().arg(fixture("flowchart.mmd")).args(["--agent", "--dry-run", "-o"]).arg(&out).output().unwrap();
+    assert!(run.status.success());
+    let envelope = json(&run.stdout);
+    assert_eq!(envelope["status"], "plan");
+    assert!(envelope["plan"]["width"].as_u64().unwrap() > 0);
+    assert!(!out.exists());
+}
+
+#[test]
+fn invalid_diagram_prints_a_structured_error() {
+    let out = tempdir().join("bad.png");
+    let mut child = bin()
+        .args(["-", "-o"])
+        .arg(&out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"not a diagram").unwrap();
+    let run = child.wait_with_output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert!(run.stdout.is_empty());
+    let error = json(&run.stderr);
+    assert_eq!(error["status"], "error");
+    assert_eq!(error["error"], "user_error");
+    assert_eq!(error["field"], "input");
+    assert!(error["message"].as_str().unwrap().contains("pele.run could not render the Diagram"));
+    assert!(error["suggestion"].as_str().unwrap().contains("Fix the Diagram"));
+    assert!(!out.exists());
+}
+
+#[test]
+fn missing_out_prints_a_structured_error() {
+    let run = bin().arg(fixture("flowchart.mmd")).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert!(run.stdout.is_empty());
+    let error = json(&run.stderr);
+    assert_eq!(error["status"], "error");
+    assert_eq!(error["field"], "--out");
+    assert!(error["message"].as_str().unwrap().contains("--out"));
+}
+
+#[test]
+fn missing_style_file_is_a_not_found_error() {
+    let out = tempdir().join("nostyle.png");
+    let run = bin().arg(fixture("themed.mmd")).args(["--style", "/nonexistent/style.css", "-o"]).arg(&out).output().unwrap();
+    assert_eq!(run.status.code(), Some(5));
+    let error = json(&run.stderr);
+    assert_eq!(error["error"], "not_found");
+    assert_eq!(error["field"], "--style");
+    assert!(!out.exists());
+}
+
+#[test]
+fn invalid_style_block_is_a_user_error() {
+    let dir = tempdir();
+    let bad = dir.join("broken.css");
+    std::fs::write(&bad, ".pele { --pele-bg: #fff").unwrap();
+    let out = dir.join("broken.png");
+    let run = bin().arg(fixture("themed.mmd")).arg("--style").arg(&bad).arg("-o").arg(&out).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    let error = json(&run.stderr);
+    assert_eq!(error["error"], "user_error");
+    assert_eq!(error["field"], "--style");
+    assert!(!out.exists());
+}
+
+#[test]
+fn invalid_flag_values_are_structured_errors() {
+    let out = tempdir().join("flag.png");
+    let run = bin().arg(fixture("flowchart.mmd")).args(["--scale", "0", "-o"]).arg(&out).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert_eq!(json(&run.stderr)["status"], "error");
+
+    let run = bin().arg(fixture("flowchart.mmd")).args(["--output", "xml", "-o"]).arg(&out).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    let error = json(&run.stderr);
+    assert_eq!(error["field"], "--output");
+    assert_eq!(error["valid_values"], serde_json::json!(["json", "ndjson", "text"]));
+    assert!(!out.exists());
+}
+
+#[test]
+fn no_command_is_a_structured_error() {
+    let run = raw().output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert_eq!(json(&run.stderr)["field"], "command");
+}
+
+#[test]
+fn describe_documents_the_render_command_and_its_flags() {
+    let run = raw().arg("describe").output().unwrap();
+    assert!(run.status.success());
+    let described = json(&run.stdout);
+    assert_eq!(described["name"], "pele-cli");
+    assert_eq!(described["tool_version"], env!("CARGO_PKG_VERSION"));
+    let render = &described["commands"][0];
+    assert_eq!(render["name"], "render");
+    let flags: Vec<&str> = render["flags"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+    for expected in ["out", "style", "color-scheme", "scale", "transparent"] {
+        assert!(flags.contains(&expected), "describe is missing --{expected}: {flags:?}");
+    }
+    let out = render["flags"].as_array().unwrap().iter().find(|f| f["name"] == "out").unwrap();
+    assert_eq!(out["required"], true);
+}
+
+#[test]
+fn schema_flag_documents_the_command_tree() {
+    let run = raw().arg("--schema").output().unwrap();
+    assert!(run.status.success());
+    let schema = json(&run.stdout);
+    assert_eq!(schema["name"], "pele-cli");
+    assert_eq!(schema["subcommands"][0]["name"], "render");
 }
