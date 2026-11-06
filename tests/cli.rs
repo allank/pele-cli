@@ -59,6 +59,38 @@ fn style_block_themes_diagram_but_fixed_colors_win() {
 }
 
 #[test]
+fn style_rules_class_ancestor_and_data_id_selectors_apply() {
+    let dir = tempdir();
+    let out = dir.join("selectors.png");
+    let status = bin()
+        .arg(fixture("themed.mmd"))
+        .arg("--style")
+        .arg(fixture("selectors.css"))
+        .arg("-o")
+        .arg(&out)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert_golden(&out, "selectors.png");
+}
+
+#[test]
+fn rule_targeting_a_fixed_color_node_loses_to_the_diagram() {
+    let dir = tempdir();
+    let out = dir.join("clash.png");
+    let status = bin()
+        .arg(fixture("themed.mmd"))
+        .arg("--style")
+        .arg(fixture("clash.css"))
+        .arg("-o")
+        .arg(&out)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert_golden(&out, "clash.png");
+}
+
+#[test]
 fn missing_style_file_fails_and_writes_no_png() {
     let dir = tempdir();
     let out = dir.join("missing-style.png");

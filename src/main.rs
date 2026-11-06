@@ -3,7 +3,6 @@ mod raster;
 mod render;
 mod style;
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -36,16 +35,16 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     let diagram = read_diagram(&cli.input)?;
-    let vars = match &cli.style {
+    let style_block = match &cli.style {
         Some(path) => {
             let css = std::fs::read_to_string(path)
                 .with_context(|| format!("failed to read Style block {}", path.display()))?;
-            css::parse_variables(&css)?
+            css::parse(&css)?
         }
-        None => HashMap::new(),
+        None => css::StyleBlock::default(),
     };
     let svg = render::diagram_to_svg(&diagram)?;
-    let svg = style::resolve(&svg, &vars);
+    let svg = style::resolve(&svg, &style_block);
     let png = raster::svg_to_png(&svg)?;
     std::fs::write(&cli.output, png)
         .with_context(|| format!("failed to write {}", cli.output.display()))?;

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use crate::css::StyleBlock;
+
 const DEFAULT_BG: &str = "#fff";
 
 /// Resolve every `var()` in a pele.run SVG so resvg, which ignores CSS custom
 /// properties, sees plain values, and add the background pele.run never paints.
-pub fn resolve(svg: &str, user_vars: &HashMap<String, String>) -> String {
-    let mut vars = user_vars.clone();
+pub fn resolve(svg: &str, style: &StyleBlock) -> String {
+    let mut vars = style.vars.clone();
     for (name, value) in root_declarations(svg) {
         vars.entry(name).or_insert(value);
     }
@@ -13,7 +15,7 @@ pub fn resolve(svg: &str, user_vars: &HashMap<String, String>) -> String {
         .get("--pele-bg")
         .map(|v| substitute(v, &vars))
         .unwrap_or_else(|| DEFAULT_BG.to_string());
-    let resolved = substitute(svg, &vars);
+    let resolved = substitute(&inject_rules(svg, &style.rules), &vars);
     let resolved = rx_style_to_attr(&resolved);
     add_background(&resolved, &bg)
 }
@@ -143,6 +145,20 @@ fn rx_style_to_attr(svg: &str) -> String {
     out
 }
 
+/// Add the Style block's rules as a `<style>` element. resvg applies them under the
+/// elements' inline `style`, so fixed Diagram colors still win.
+fn inject_rules(svg: &str, rules: &str) -> String {
+    let Some(tag_end) = svg.find('>').filter(|_| !rules.is_empty()) else {
+        return svg.to_string();
+    };
+    format!(
+        "{}<style><![CDATA[{}]]></style>{}",
+        &svg[..=tag_end],
+        rules,
+        &svg[tag_end + 1..]
+    )
+}
+
 fn add_background(svg: &str, bg: &str) -> String {
     let Some(tag_end) = svg.find('>') else {
         return svg.to_string();
@@ -162,14 +178,14 @@ mod tests {
     #[test]
     fn resolves_nested_vars_with_fallbacks() {
         let svg = r##"<svg style="--_s:var(--pele-surface,#f3f3f3)"><rect fill="var(--_s)"/></svg>"##;
-        let out = resolve(svg, &HashMap::new());
+        let out = resolve(svg, &StyleBlock::default());
         assert!(!out.contains("var("));
         assert!(out.contains(r##"fill="#f3f3f3""##));
     }
 
     #[test]
     fn adds_default_white_background() {
-        let out = resolve(r#"<svg width="1"><g/></svg>"#, &HashMap::new());
+        let out = resolve(r#"<svg width="1"><g/></svg>"#, &StyleBlock::default());
         assert!(out.contains(r##"fill="#fff""##));
     }
 
@@ -180,7 +196,7 @@ mod tests {
             ("--pele-surface".to_string(), "var(--brand, red)".to_string()),
             ("--brand".to_string(), "#123456".to_string()),
         ]);
-        let out = resolve(svg, &vars);
+        let out = resolve(svg, &StyleBlock { vars, ..Default::default() });
         assert!(!out.contains("var("));
         assert!(out.contains(r##"fill="#123456""##));
     }
@@ -188,28 +204,40 @@ mod tests {
     #[test]
     fn rx_conversion_keeps_fixed_colors() {
         let svg = r##"<svg style="--_r:4px"><rect style="rx:var(--_r);fill:#d0a215;stroke:#ad8301;"/></svg>"##;
-        let out = resolve(svg, &HashMap::new());
+        let out = resolve(svg, &StyleBlock::default());
         assert!(out.contains(r#"rx="4""#));
         assert!(out.contains("fill:#d0a215"));
         assert!(out.contains("stroke:#ad8301"));
     }
 
     #[test]
+    fn rules_become_a_style_element_with_vars_resolved() {
+        let style = StyleBlock {
+            vars: HashMap::from([("--pele-accent".to_string(), "#205ea6".to_string())]),
+            rules: ".pele-label{fill:var(--pele-accent)}\n".to_string(),
+        };
+        let out = resolve(r#"<svg><g/></svg>"#, &style);
+        assert!(out.contains(".pele-label{fill:#205ea6}"));
+        assert!(!out.contains("var("));
+    }
+
+    #[test]
     fn user_background_is_painted() {
         let vars = HashMap::from([("--pele-bg".to_string(), "#fffcf0".to_string())]);
-        assert!(resolve(r#"<svg><g/></svg>"#, &vars).contains(r##"fill="#fffcf0""##));
+        assert!(resolve(r#"<svg><g/></svg>"#, &StyleBlock { vars, ..Default::default() }).contains(r##"fill="#fffcf0""##));
     }
 
     #[test]
     fn diagram_fixed_colors_are_untouched() {
         let svg = r##"<svg style="--_s:var(--pele-surface,#f3f3f3)"><rect fill="#879a39"/></svg>"##;
         let vars = HashMap::from([("--pele-surface".to_string(), "#000000".to_string())]);
-        assert!(resolve(svg, &vars).contains(r##"fill="#879a39""##));
+        let out = resolve(svg, &StyleBlock { vars, ..Default::default() });
+        assert!(out.contains(r##"fill="#879a39""##));
     }
 
     #[test]
     fn rx_style_becomes_attribute() {
         let svg = r#"<svg style="--_r:4px"><rect style="rx:var(--_r)"/></svg>"#;
-        assert!(resolve(svg, &HashMap::new()).contains(r#"rx="4""#));
+        assert!(resolve(svg, &StyleBlock::default()).contains(r#"rx="4""#));
     }
 }

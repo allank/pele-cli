@@ -2,11 +2,17 @@ use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 
-/// Custom properties (`--name: value`) declared in a Style block's `.pele` or `:root` rules.
-/// Other rules are ignored for now.
-pub fn parse_variables(css: &str) -> Result<HashMap<String, String>> {
+/// A parsed Style block: the custom properties declared on the root (`.pele` or `:root`),
+/// and every other rule re-serialized as plain CSS for resvg to apply.
+#[derive(Debug, Default, PartialEq)]
+pub struct StyleBlock {
+    pub vars: HashMap<String, String>,
+    pub rules: String,
+}
+
+pub fn parse(css: &str) -> Result<StyleBlock> {
     let css = strip_comments(css);
-    let mut vars = HashMap::new();
+    let mut block = StyleBlock::default();
     let mut rest = css.trim();
     while !rest.is_empty() {
         let Some(open) = rest.find('{') else {
@@ -20,7 +26,9 @@ pub fn parse_variables(css: &str) -> Result<HashMap<String, String>> {
             bail!("invalid Style block: missing `}}` for `{selector}`");
         };
         let body = &rest[open + 1..close];
-        if matches!(selector, ".pele" | ":root") {
+        if !selector.starts_with('@') {
+            let is_root = matches!(selector, ".pele" | ":root");
+            let mut kept = Vec::new();
             for declaration in body.split(';').map(str::trim).filter(|d| !d.is_empty()) {
                 let Some((name, value)) = declaration.split_once(':') else {
                     bail!("invalid Style block: `{declaration}` is not `name: value`");
@@ -30,13 +38,20 @@ pub fn parse_variables(css: &str) -> Result<HashMap<String, String>> {
                     bail!("invalid Style block: `{declaration}` is not `name: value`");
                 }
                 if name.starts_with("--") {
-                    vars.insert(name.to_string(), value.to_string());
+                    if is_root {
+                        block.vars.insert(name.to_string(), value.to_string());
+                    }
+                } else {
+                    kept.push(format!("{name}:{value}"));
                 }
+            }
+            if !kept.is_empty() {
+                block.rules.push_str(&format!("{selector}{{{}}}\n", kept.join(";")));
             }
         }
         rest = rest[close + 1..].trim();
     }
-    Ok(vars)
+    Ok(block)
 }
 
 fn strip_comments(css: &str) -> String {
@@ -76,28 +91,48 @@ mod tests {
 
     #[test]
     fn collects_custom_properties_from_pele_rule() {
-        let vars = parse_variables(".pele { --pele-bg: #fffcf0; --pele-accent: #205ea6; }").unwrap();
+        let vars = parse(".pele { --pele-bg: #fffcf0; --pele-accent: #205ea6; }").unwrap().vars;
         assert_eq!(vars["--pele-bg"], "#fffcf0");
         assert_eq!(vars["--pele-accent"], "#205ea6");
     }
 
     #[test]
     fn keeps_nested_var_references_verbatim() {
-        let vars = parse_variables(":root { --brand: #123; --pele-accent: var(--brand, red) }").unwrap();
+        let vars = parse(":root { --brand: #123; --pele-accent: var(--brand, red) }").unwrap().vars;
         assert_eq!(vars["--pele-accent"], "var(--brand, red)");
     }
 
     #[test]
-    fn ignores_comments_and_other_rules() {
-        let vars = parse_variables("/* hi */ .other { color: red } .pele { --pele-fg: #000 }").unwrap();
-        assert_eq!(vars.len(), 1);
+    fn keeps_other_rules_and_ignores_comments() {
+        let block = parse("/* hi */ .pele-node { stroke-width: 2 } .pele { --pele-fg: #000 }").unwrap();
+        assert_eq!(block.vars.len(), 1);
+        assert_eq!(block.rules, ".pele-node{stroke-width:2}\n");
+    }
+
+    #[test]
+    fn keeps_compound_ancestor_and_attribute_selectors() {
+        let block = parse(".pele-node[data-id=\"A\"] .pele-label { fill: var(--pele-accent) }").unwrap();
+        assert_eq!(block.rules, ".pele-node[data-id=\"A\"] .pele-label{fill:var(--pele-accent)}\n");
+    }
+
+    #[test]
+    fn keeps_plain_declarations_from_the_root_rule() {
+        let block = parse(".pele { --pele-bg: #fff; stroke-width: 3 }").unwrap();
+        assert_eq!(block.vars.len(), 1);
+        assert_eq!(block.rules, ".pele{stroke-width:3}\n");
+    }
+
+    #[test]
+    fn skips_at_rules_for_now() {
+        let block = parse("@media (prefers-color-scheme: dark) { .pele { --pele-bg: #000 } }").unwrap();
+        assert_eq!(block, StyleBlock::default());
     }
 
     #[test]
     fn rejects_malformed_blocks() {
-        assert!(parse_variables(".pele { --pele-bg: #fff").is_err());
-        assert!(parse_variables(".pele { --pele-bg }").is_err());
-        assert!(parse_variables("{ --pele-bg: #fff }").is_err());
-        assert!(parse_variables("--pele-bg: #fff;").is_err());
+        assert!(parse(".pele { --pele-bg: #fff").is_err());
+        assert!(parse(".pele { --pele-bg }").is_err());
+        assert!(parse("{ --pele-bg: #fff }").is_err());
+        assert!(parse("--pele-bg: #fff;").is_err());
     }
 }

@@ -1,0 +1,9 @@
+.pele {
+  --pele-bg: #fffcf0;
+  --pele-surface: #f2f0e5;
+  --pele-border: #cecdc3;
+  --pele-accent: #205ea6;
+}
+.pele-node { stroke-width: 3; }
+.pele-node[data-id="A"] .pele-label { fill: var(--pele-accent); }
+.pele-edge path { stroke: #af3029; }
