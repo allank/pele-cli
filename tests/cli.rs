@@ -90,6 +90,49 @@ fn rule_targeting_a_fixed_color_node_loses_to_the_diagram() {
     assert_golden(&out, "clash.png");
 }
 
+fn render_scheme(extra: &[&str], name: &str) -> (std::process::ExitStatus, PathBuf) {
+    let out = tempdir().join(name);
+    let status = bin()
+        .arg(fixture("flowchart.mmd"))
+        .arg("--style")
+        .arg(fixture("scheme.css"))
+        .args(extra)
+        .arg("-o")
+        .arg(&out)
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    (status, out)
+}
+
+#[test]
+fn color_scheme_defaults_to_light_and_ignores_dark_media_query() {
+    let (status, out) = render_scheme(&[], "default.png");
+    assert!(status.success());
+    assert_golden(&out, "scheme-light.png");
+}
+
+#[test]
+fn color_scheme_light_matches_the_default() {
+    let (status, out) = render_scheme(&["--color-scheme", "light"], "light.png");
+    assert!(status.success());
+    assert_golden(&out, "scheme-light.png");
+}
+
+#[test]
+fn color_scheme_dark_applies_the_dark_media_query() {
+    let (status, out) = render_scheme(&["--color-scheme", "dark"], "dark.png");
+    assert!(status.success());
+    assert_golden(&out, "scheme-dark.png");
+}
+
+#[test]
+fn invalid_color_scheme_fails_and_writes_no_png() {
+    let (status, out) = render_scheme(&["--color-scheme", "sepia"], "sepia.png");
+    assert!(!status.success());
+    assert!(!out.exists());
+}
+
 #[test]
 fn missing_style_file_fails_and_writes_no_png() {
     let dir = tempdir();

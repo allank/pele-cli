@@ -1,0 +1,17 @@
+.pele {
+  --pele-bg: #fffcf0;
+  --pele-fg: #100f0f;
+  --pele-line: #100f0f;
+  --pele-surface: #f2f0e5;
+  --pele-border: #cecdc3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pele {
+    --pele-bg: #100f0f;
+    --pele-fg: #cecdc3;
+    --pele-line: #cecdc3;
+    --pele-surface: #1c1b1a;
+    --pele-border: #403e3c;
+  }
+}

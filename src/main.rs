@@ -24,6 +24,10 @@ struct Cli {
     /// Style block: CSS following the pele.run theming reference
     #[arg(long)]
     style: Option<PathBuf>,
+
+    /// Which of the Style block's light or dark values apply
+    #[arg(long, value_enum, default_value_t)]
+    color_scheme: css::ColorScheme,
 }
 
 fn main() {
@@ -39,7 +43,7 @@ fn run(cli: Cli) -> Result<()> {
         Some(path) => {
             let css = std::fs::read_to_string(path)
                 .with_context(|| format!("failed to read Style block {}", path.display()))?;
-            css::parse(&css)?
+            css::parse(&css, cli.color_scheme)?
         }
         None => css::StyleBlock::default(),
     };
