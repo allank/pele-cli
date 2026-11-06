@@ -43,6 +43,56 @@ fn renders_flowchart_from_stdin() {
 }
 
 #[test]
+fn style_block_themes_diagram_but_fixed_colors_win() {
+    let dir = tempdir();
+    let out = dir.join("themed.png");
+    let status = bin()
+        .arg(fixture("themed.mmd"))
+        .arg("--style")
+        .arg(fixture("themed.css"))
+        .arg("-o")
+        .arg(&out)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert_golden(&out, "themed.png");
+}
+
+#[test]
+fn missing_style_file_fails_and_writes_no_png() {
+    let dir = tempdir();
+    let out = dir.join("missing-style.png");
+    let status = bin()
+        .arg(fixture("themed.mmd"))
+        .args(["--style", "/nonexistent/style.css", "-o"])
+        .arg(&out)
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(!status.success());
+    assert!(!out.exists());
+}
+
+#[test]
+fn invalid_style_block_fails_and_writes_no_png() {
+    let dir = tempdir();
+    let bad = dir.join("bad.css");
+    std::fs::write(&bad, ".pele { --pele-bg: #fff").unwrap();
+    let out = dir.join("bad-style.png");
+    let status = bin()
+        .arg(fixture("themed.mmd"))
+        .arg("--style")
+        .arg(&bad)
+        .arg("-o")
+        .arg(&out)
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(!status.success());
+    assert!(!out.exists());
+}
+
+#[test]
 fn missing_output_flag_fails_and_writes_nothing() {
     let dir = tempdir();
     let status = bin().current_dir(&dir).arg(fixture("flowchart.mmd")).status().unwrap();

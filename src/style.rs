@@ -109,23 +109,35 @@ fn matching_paren(text: &str, open: usize) -> Option<usize> {
     None
 }
 
-/// resvg reads corner radius from the `rx` attribute, not from a `style="rx:..."` property.
+/// resvg reads corner radius from the `rx` attribute, not from a `rx` property inside
+/// `style`. Move it out and keep the other declarations (fixed Diagram colors live there).
 fn rx_style_to_attr(svg: &str) -> String {
+    const MARKER: &str = " style=\"";
     let mut out = String::with_capacity(svg.len());
     let mut rest = svg;
-    while let Some(i) = rest.find(" style=\"rx:") {
+    while let Some(i) = rest.find(MARKER) {
         out.push_str(&rest[..i]);
-        let after = &rest[i + 11..];
-        match after.split_once('"') {
-            Some((value, tail)) => {
-                out.push_str(&format!(" rx=\"{}\"", value.trim_end_matches("px")));
-                rest = tail;
+        let after = &rest[i + MARKER.len()..];
+        let Some(end) = after.find('"') else {
+            rest = &rest[i..];
+            break;
+        };
+        let declarations = split_declarations(&after[..end]);
+        match declarations.iter().find(|(name, _)| name == "rx") {
+            Some((_, radius)) => {
+                out.push_str(&format!(" rx=\"{}\"", radius.trim_end_matches("px")));
+                let kept: Vec<String> = declarations
+                    .iter()
+                    .filter(|(name, _)| name != "rx")
+                    .map(|(name, value)| format!("{name}:{value}"))
+                    .collect();
+                if !kept.is_empty() {
+                    out.push_str(&format!(" style=\"{}\"", kept.join(";")));
+                }
             }
-            None => {
-                rest = &rest[i..];
-                break;
-            }
+            None => out.push_str(&rest[i..i + MARKER.len() + end + 1]),
         }
+        rest = &after[end + 1..];
     }
     out.push_str(rest);
     out
@@ -159,6 +171,40 @@ mod tests {
     fn adds_default_white_background() {
         let out = resolve(r#"<svg width="1"><g/></svg>"#, &HashMap::new());
         assert!(out.contains(r##"fill="#fff""##));
+    }
+
+    #[test]
+    fn user_variables_override_defaults_and_resolve_nested() {
+        let svg = r##"<svg style="--_s:var(--pele-surface,#f3f3f3)"><rect fill="var(--_s)"/></svg>"##;
+        let vars = HashMap::from([
+            ("--pele-surface".to_string(), "var(--brand, red)".to_string()),
+            ("--brand".to_string(), "#123456".to_string()),
+        ]);
+        let out = resolve(svg, &vars);
+        assert!(!out.contains("var("));
+        assert!(out.contains(r##"fill="#123456""##));
+    }
+
+    #[test]
+    fn rx_conversion_keeps_fixed_colors() {
+        let svg = r##"<svg style="--_r:4px"><rect style="rx:var(--_r);fill:#d0a215;stroke:#ad8301;"/></svg>"##;
+        let out = resolve(svg, &HashMap::new());
+        assert!(out.contains(r#"rx="4""#));
+        assert!(out.contains("fill:#d0a215"));
+        assert!(out.contains("stroke:#ad8301"));
+    }
+
+    #[test]
+    fn user_background_is_painted() {
+        let vars = HashMap::from([("--pele-bg".to_string(), "#fffcf0".to_string())]);
+        assert!(resolve(r#"<svg><g/></svg>"#, &vars).contains(r##"fill="#fffcf0""##));
+    }
+
+    #[test]
+    fn diagram_fixed_colors_are_untouched() {
+        let svg = r##"<svg style="--_s:var(--pele-surface,#f3f3f3)"><rect fill="#879a39"/></svg>"##;
+        let vars = HashMap::from([("--pele-surface".to_string(), "#000000".to_string())]);
+        assert!(resolve(svg, &vars).contains(r##"fill="#879a39""##));
     }
 
     #[test]

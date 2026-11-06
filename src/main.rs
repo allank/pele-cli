@@ -1,3 +1,4 @@
+mod css;
 mod raster;
 mod render;
 mod style;
@@ -20,6 +21,10 @@ struct Cli {
     /// Output PNG path
     #[arg(short, long)]
     output: PathBuf,
+
+    /// Style block: CSS following the pele.run theming reference
+    #[arg(long)]
+    style: Option<PathBuf>,
 }
 
 fn main() {
@@ -31,8 +36,16 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     let diagram = read_diagram(&cli.input)?;
+    let vars = match &cli.style {
+        Some(path) => {
+            let css = std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read Style block {}", path.display()))?;
+            css::parse_variables(&css)?
+        }
+        None => HashMap::new(),
+    };
     let svg = render::diagram_to_svg(&diagram)?;
-    let svg = style::resolve(&svg, &HashMap::new());
+    let svg = style::resolve(&svg, &vars);
     let png = raster::svg_to_png(&svg)?;
     std::fs::write(&cli.output, png)
         .with_context(|| format!("failed to write {}", cli.output.display()))?;
