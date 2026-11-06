@@ -16,7 +16,7 @@ env:
 jobs:
   # The golden PNGs are generated on macOS arm64, so the test suite only runs there.
   test:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Check the tag matches the crate version
@@ -37,11 +37,11 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
             smoke: true
           # Built on the arm64 runner; Apple's clang cross-compiles between its own architectures.
           - target: x86_64-apple-darwin
-            os: macos-14
+            os: macos-15
             smoke: false
           # Ubuntu 22.04 keeps the glibc requirement low so the binary runs on older distros.
           - target: x86_64-unknown-linux-gnu
