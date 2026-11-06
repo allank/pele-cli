@@ -44,6 +44,10 @@ struct RenderArgs {
     #[arg(default_value = "-")]
     input: String,
 
+    /// The Diagram as text, instead of a file or stdin
+    #[arg(long, conflicts_with = "input")]
+    diagram_text: Option<String>,
+
     /// Output PNG path
     #[arg(short, long = "out", required = true)]
     out: PathBuf,
@@ -51,6 +55,10 @@ struct RenderArgs {
     /// Style block: CSS following the pele.run theming reference
     #[arg(long)]
     style: Option<PathBuf>,
+
+    /// The Style block as text, instead of a --style file
+    #[arg(long, conflicts_with = "style")]
+    style_text: Option<String>,
 
     /// Which of the Style block's light or dark values apply
     #[arg(long, value_enum, default_value_t)]
@@ -165,15 +173,23 @@ fn fail_parse(err: clap::Error) -> ! {
 }
 
 fn render_command(args: &RenderArgs, writer: &mut Writer, dry_run: bool) -> Result<(), AgentError> {
-    let diagram = read_diagram(&args.input)?;
-    let style_block = match &args.style {
-        Some(path) => {
+    let diagram = match &args.diagram_text {
+        Some(text) => text.clone(),
+        None => read_diagram(&args.input)?,
+    };
+    let (style_source, style_field) = match (&args.style, &args.style_text) {
+        (Some(path), _) => {
             let text = std::fs::read_to_string(path).map_err(|e| io_error("Style block", "--style", path, &e))?;
-            css::parse(&text, args.color_scheme).map_err(|e| AgentError {
-                field: "--style".into(),
-                ..AgentError::user_error(&format!("{e:#}"), "Fix the Style block and run again.")
-            })?
+            (Some(text), "--style")
         }
+        (None, Some(text)) => (Some(text.clone()), "--style-text"),
+        (None, None) => (None, "--style"),
+    };
+    let style_block = match style_source {
+        Some(text) => css::parse(&text, args.color_scheme).map_err(|e| AgentError {
+            field: style_field.into(),
+            ..AgentError::user_error(&format!("{e:#}"), "Fix the Style block and run again.")
+        })?,
         None => css::StyleBlock::default(),
     };
 

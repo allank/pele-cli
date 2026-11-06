@@ -395,7 +395,7 @@ fn describe_documents_the_render_command_and_its_flags() {
     let render = &described["commands"][0];
     assert_eq!(render["name"], "render");
     let flags: Vec<&str> = render["flags"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
-    for expected in ["out", "style", "color-scheme", "scale", "transparent"] {
+    for expected in ["diagram-text", "out", "style", "style-text", "color-scheme", "scale", "transparent"] {
         assert!(flags.contains(&expected), "describe is missing --{expected}: {flags:?}");
     }
     let out = render["flags"].as_array().unwrap().iter().find(|f| f["name"] == "out").unwrap();
@@ -474,4 +474,73 @@ fn sequence_diagram_renders() {
     let status = bin().arg(fixture("sequence.mmd")).arg("-o").arg(&out).stdout(Stdio::null()).status().unwrap();
     assert!(status.success());
     assert_golden(&out, "sequence.png");
+}
+
+fn text_of(name: &str) -> String {
+    std::fs::read_to_string(fixture(name)).unwrap()
+}
+
+#[test]
+fn diagram_text_matches_rendering_the_same_diagram_from_a_file() {
+    let out = tempdir().join("text.png");
+    let run = bin().args(["--diagram-text", &text_of("flowchart.mmd"), "-o"]).arg(&out).stdin(Stdio::null()).output().unwrap();
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert_golden(&out, "flowchart.png");
+}
+
+#[test]
+fn diagram_text_accepts_a_one_line_diagram_with_semicolons() {
+    let out = tempdir().join("oneline.png");
+    let run = bin().args(["--diagram-text", "flowchart LR; A-->B", "-o"]).arg(&out).stdin(Stdio::null()).output().unwrap();
+    assert!(run.status.success());
+    assert!(load(&out).width() > 0);
+}
+
+#[test]
+fn style_text_matches_a_style_file() {
+    let out = tempdir().join("styletext.png");
+    let run = bin()
+        .arg(fixture("themed.mmd"))
+        .args(["--style-text", &text_of("themed.css"), "-o"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert!(run.status.success());
+    assert_golden(&out, "themed.png");
+}
+
+#[test]
+fn invalid_style_text_is_a_user_error_on_style_text() {
+    let out = tempdir().join("badtext.png");
+    let run = bin()
+        .arg(fixture("themed.mmd"))
+        .args(["--style-text", ".pele { --pele-bg: #fff", "-o"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert_eq!(json(&run.stderr)["field"], "--style-text");
+    assert!(!out.exists());
+}
+
+#[test]
+fn text_and_file_sources_conflict() {
+    let out = tempdir().join("conflict.png");
+    let run = bin().arg(fixture("flowchart.mmd")).args(["--diagram-text", "flowchart LR; A-->B", "-o"]).arg(&out).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert_eq!(json(&run.stderr)["status"], "error");
+    assert!(!out.exists());
+
+    let style = fixture("themed.css");
+    let run = bin()
+        .arg(fixture("themed.mmd"))
+        .arg("--style")
+        .arg(&style)
+        .args(["--style-text", ".pele { --pele-bg: #fff }", "-o"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert_eq!(json(&run.stderr)["status"], "error");
+    assert!(!out.exists());
 }

@@ -24,8 +24,10 @@ cat diagram.mmd | pele-cli render - -o diagram.png
 | Option | Default | Meaning |
 |---|---|---|
 | `<input>` | `-` | Diagram file, or `-` for stdin |
+| `--diagram-text <text>` | none | The Diagram as a string, instead of `<input>` |
 | `-o, --out <path>` | required | Output PNG path |
 | `--style <file>` | none | [Style block](docs/theming.md): CSS to theme the diagram |
+| `--style-text <css>` | none | The Style block as a string, instead of `--style` |
 | `--color-scheme light\|dark` | `light` | Which of the Style block's light or dark values apply |
 | `--scale <n>` | `2` | PNG size as a multiple of the diagram's natural size |
 | `--transparent` | off | Leave the background transparent |
@@ -33,6 +35,17 @@ cat diagram.mmd | pele-cli render - -o diagram.png
 | `--output json\|ndjson\|text` | auto | Force the output format |
 
 One Diagram becomes one PNG per run.
+
+You can also pass both as strings, which avoids temporary files in scripts and agents:
+
+```sh
+pele-cli render --diagram-text 'flowchart LR; A-->B' \
+  --style-text '.pele { --pele-bg: #fffcf0 }' -o diagram.png
+```
+
+Use single quotes so the shell does not expand `$` or backticks. A real newline inside the quotes works; a literal `\n` does not, so for a one-liner separate statements with `;`. `--diagram-text` cannot be combined with `<input>`, and `--style-text` cannot be combined with `--style`.
+
+When you type a Diagram straight into the terminal with `-` (rather than piping a file in), `pele-cli` keeps reading until it sees end-of-input. Press `Ctrl-D` on an empty line to submit it.
 
 ## Theming
 
