@@ -228,6 +228,12 @@ mod tests {
     }
 
     #[test]
+    fn var_with_no_value_and_no_fallback_becomes_empty() {
+        let out = resolve(r#"<svg><rect fill="var(--nothing)"/></svg>"#, &StyleBlock::default(), false);
+        assert!(out.contains(r#"fill="""#));
+    }
+
+    #[test]
     fn user_background_is_painted() {
         let vars = HashMap::from([("--pele-bg".to_string(), "#fffcf0".to_string())]);
         assert!(resolve(r#"<svg><g/></svg>"#, &StyleBlock { vars, ..Default::default() }, false).contains(r##"fill="#fffcf0""##));

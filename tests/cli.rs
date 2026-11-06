@@ -467,3 +467,11 @@ fn embedded_and_quoted_font_families_render_without_a_warning() {
     assert!(!json(&run.stdout)["message"].as_str().unwrap().contains("Warning"));
     assert!(out.exists());
 }
+
+#[test]
+fn sequence_diagram_renders() {
+    let out = tempdir().join("sequence.png");
+    let status = bin().arg(fixture("sequence.mmd")).arg("-o").arg(&out).stdout(Stdio::null()).status().unwrap();
+    assert!(status.success());
+    assert_golden(&out, "sequence.png");
+}
