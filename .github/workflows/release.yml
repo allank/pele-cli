@@ -30,8 +30,21 @@ jobs:
       - run: rustup update stable --no-self-update
       - run: cargo test --release
 
+  # License notices for every Rust crate in the binary, generated once and shipped in each archive.
+  notices:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup update stable --no-self-update
+      - run: cargo install cargo-about --locked --features cli --version 0.9.3
+      - run: cargo about generate about.hbs --locked -o THIRD-PARTY-NOTICES.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: notices
+          path: THIRD-PARTY-NOTICES.txt
+
   build:
-    needs: test
+    needs: [test, notices]
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +66,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: notices
       - run: rustup update stable --no-self-update
       - run: rustup target add ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
@@ -68,6 +84,7 @@ jobs:
           name="pele-cli-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name/licenses"
           cp "target/${{ matrix.target }}/release/pele-cli" "dist/$name/"
+          cp LICENSE THIRD-PARTY-NOTICES.txt "dist/$name/"
           cp assets/PELE-LICENSE "dist/$name/licenses/pele.run-LICENSE"
           cp assets/fonts/INTER-LICENSE.txt assets/fonts/JETBRAINSMONO-LICENSE.txt "dist/$name/licenses/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"

@@ -112,4 +112,6 @@ The design decisions are in `docs/adr`, and the project vocabulary is in `GLOSSA
 
 ## Licenses
 
-pele-cli embeds [pele.run](https://github.com/obsidianmd/pele) (MIT), [Inter](https://github.com/rsms/inter) (SIL OFL) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (SIL OFL). Their licenses are in `assets/` and are included in every release archive.
+pele-cli is released under the [MIT License](LICENSE).
+
+It embeds [pele.run](https://github.com/obsidianmd/pele) (MIT), [Inter](https://github.com/rsms/inter) (SIL OFL) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (SIL OFL). Their licenses are in `assets/`. Every release archive includes them in `licenses/`, plus `THIRD-PARTY-NOTICES.txt` for the Rust crates that are compiled in.

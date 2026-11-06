@@ -1,0 +1,18 @@
+THIRD-PARTY NOTICES
+
+pele-cli bundles the Rust crates below. Each is used under the license shown.
+The licenses of the other embedded components (pele.run, Inter and JetBrains Mono)
+are in the licenses/ folder next to this file.
+
+{{#each licenses}}
+================================================================================
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}{{#if crate.repository}} <{{crate.repository}}>{{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}
