@@ -24,7 +24,9 @@ pub fn diagram_to_svg(diagram: &str) -> Result<String> {
             .catch(&ctx)
             .map_err(|e| anyhow!("failed to load pele.run: {e}"))?;
         ctx.globals().set("__diagram", diagram)?;
-        ctx.eval::<String, _>("pele.render(__diagram).svg")
+        // Class members, ER attributes and tree files are drawn in the monospace font only
+        // when pele.run is told to measure them in it.
+        ctx.eval::<String, _>("pele.render(__diagram, {monospace: ['members', 'attributes', 'files']}).svg")
             .catch(&ctx)
             .map_err(|e| {
                 let text = e.to_string();

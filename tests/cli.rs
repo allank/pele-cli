@@ -410,3 +410,60 @@ fn schema_flag_documents_the_command_tree() {
     assert_eq!(schema["name"], "pele-cli");
     assert_eq!(schema["subcommands"][0]["name"], "render");
 }
+
+#[test]
+fn class_diagram_members_render_in_the_embedded_monospace_font() {
+    let out = tempdir().join("class.png");
+    let status = bin().arg(fixture("class.mmd")).arg("-o").arg(&out).stdout(Stdio::null()).status().unwrap();
+    assert!(status.success());
+    assert_golden(&out, "class.png");
+}
+
+fn render_with_font_style(css: &str, extra: &[&str]) -> (std::process::Output, PathBuf) {
+    let dir = tempdir();
+    let style = dir.join("font.css");
+    std::fs::write(&style, css).unwrap();
+    let out = dir.join("font.png");
+    let run = bin()
+        .arg(fixture("flowchart.mmd"))
+        .arg("--style")
+        .arg(&style)
+        .args(extra)
+        .arg("-o")
+        .arg(&out)
+        .output()
+        .unwrap();
+    (run, out)
+}
+
+#[test]
+fn unavailable_font_falls_back_to_inter_and_warns_in_the_message() {
+    let (run, out) = render_with_font_style(".pele { --pele-font: \"Papyrus\"; }", &[]);
+    assert!(run.status.success());
+    let message = json(&run.stdout)["message"].as_str().unwrap().to_string();
+    assert!(message.contains("Warning: font family \"Papyrus\" is not embedded; using Inter instead."), "{message}");
+
+    // The fallback text is Inter, so the picture matches a render with no Style block.
+    let plain = tempdir().join("plain.png");
+    assert!(bin().arg(fixture("flowchart.mmd")).arg("-o").arg(&plain).stdout(Stdio::null()).status().unwrap().success());
+    assert!(std::fs::read(&out).unwrap() == std::fs::read(&plain).unwrap());
+}
+
+#[test]
+fn font_warning_also_appears_in_terminal_style_output() {
+    let (run, _) = render_with_font_style(".pele { --pele-font-mono: Menlo; }", &["--output", "text"]);
+    assert!(run.status.success());
+    let stdout = String::from_utf8(run.stdout).unwrap();
+    assert!(stdout.contains("Warning: font family \"Menlo\" is not embedded; using JetBrains Mono instead."), "{stdout}");
+}
+
+#[test]
+fn embedded_and_quoted_font_families_render_without_a_warning() {
+    let (run, out) = render_with_font_style(
+        ".pele { --pele-font: \"Inter\", sans-serif; --pele-font-mono: 'JetBrains Mono'; }",
+        &[],
+    );
+    assert!(run.status.success());
+    assert!(!json(&run.stdout)["message"].as_str().unwrap().contains("Warning"));
+    assert!(out.exists());
+}

@@ -198,14 +198,19 @@ fn render_command(args: &RenderArgs, writer: &mut Writer, dry_run: bool) -> Resu
 
     let result = json!({ "path": args.out, "width": png.width, "height": png.height });
     if dry_run {
-        let text = format!("Would write {}x{} PNG to {}", png.width, png.height, args.out.display());
-        writer.write_plan(&text, &result);
+        let text = format!("Would write {}x{} PNG to {}.", png.width, png.height, args.out.display());
+        writer.write_plan(&with_warnings(text, &style_block.warnings), &result);
         return Ok(());
     }
     std::fs::write(&args.out, &png.bytes).map_err(|e| io_error("output file", "--out", &args.out, &e))?;
-    let text = format!("Wrote {} ({}x{})", args.out.display(), png.width, png.height);
-    writer.write_success(&text, &result);
+    let text = format!("Wrote {} ({}x{}).", args.out.display(), png.width, png.height);
+    writer.write_success(&with_warnings(text, &style_block.warnings), &result);
     Ok(())
+}
+
+/// Murli envelopes have no warnings field, so warnings travel in the human message.
+fn with_warnings(text: String, warnings: &[String]) -> String {
+    warnings.iter().fold(text, |text, warning| format!("{text} Warning: {warning}."))
 }
 
 fn read_diagram(input: &str) -> Result<String, AgentError> {

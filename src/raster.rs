@@ -5,6 +5,8 @@ use resvg::{tiny_skia, usvg};
 
 const INTER_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 const INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
+const JETBRAINS_MONO_REGULAR: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
+const JETBRAINS_MONO_BOLD: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
 
 /// The requested `--scale` cannot produce an image.
 #[derive(Debug)]
@@ -30,9 +32,11 @@ pub fn svg_to_png(svg: &str, scale: f32) -> Result<Png> {
     let mut fontdb = usvg::fontdb::Database::new();
     fontdb.load_font_data(INTER_REGULAR.to_vec());
     fontdb.load_font_data(INTER_BOLD.to_vec());
+    fontdb.load_font_data(JETBRAINS_MONO_REGULAR.to_vec());
+    fontdb.load_font_data(JETBRAINS_MONO_BOLD.to_vec());
     fontdb.set_sans_serif_family("Inter");
     fontdb.set_serif_family("Inter");
-    fontdb.set_monospace_family("Inter");
+    fontdb.set_monospace_family("JetBrains Mono");
 
     let options = usvg::Options {
         font_family: "Inter".to_string(),

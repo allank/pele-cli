@@ -220,6 +220,7 @@ mod tests {
         let style = StyleBlock {
             vars: HashMap::from([("--pele-accent".to_string(), "#205ea6".to_string())]),
             rules: ".pele-label{fill:var(--pele-accent)}\n".to_string(),
+            ..Default::default()
         };
         let out = resolve(r#"<svg><g/></svg>"#, &style, false);
         assert!(out.contains(".pele-label{fill:#205ea6}"));
