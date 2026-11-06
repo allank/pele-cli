@@ -6,8 +6,9 @@ use resvg::{tiny_skia, usvg};
 const INTER_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 const INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
-/// Rasterize a fully resolved SVG to PNG bytes using only the embedded fonts.
-pub fn svg_to_png(svg: &str) -> Result<Vec<u8>> {
+/// Rasterize a fully resolved SVG to PNG bytes at `scale` times its natural size,
+/// using only the embedded fonts.
+pub fn svg_to_png(svg: &str, scale: f32) -> Result<Vec<u8>> {
     let mut fontdb = usvg::fontdb::Database::new();
     fontdb.load_font_data(INTER_REGULAR.to_vec());
     fontdb.load_font_data(INTER_BOLD.to_vec());
@@ -21,9 +22,13 @@ pub fn svg_to_png(svg: &str) -> Result<Vec<u8>> {
         ..Default::default()
     };
     let tree = usvg::Tree::from_str(svg, &options).context("failed to parse rendered SVG")?;
-    let size = tree.size().to_int_size();
+    let size = tree
+        .size()
+        .to_int_size()
+        .scale_by(scale)
+        .ok_or_else(|| anyhow!("--scale {scale} gives an image with no pixels"))?;
     let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
-        .ok_or_else(|| anyhow!("diagram has zero size"))?;
-    resvg::render(&tree, tiny_skia::Transform::identity(), &mut pixmap.as_mut());
+        .ok_or_else(|| anyhow!("--scale {scale} gives an image too large to render"))?;
+    resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
     pixmap.encode_png().map_err(|e| anyhow!("failed to encode PNG: {e}"))
 }

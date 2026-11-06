@@ -133,6 +133,67 @@ fn invalid_color_scheme_fails_and_writes_no_png() {
     assert!(!out.exists());
 }
 
+fn render_flowchart(extra: &[&str], name: &str) -> (std::process::ExitStatus, PathBuf) {
+    let out = tempdir().join(name);
+    let status = bin()
+        .arg(fixture("flowchart.mmd"))
+        .args(extra)
+        .arg("-o")
+        .arg(&out)
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    (status, out)
+}
+
+fn load(path: &Path) -> resvg::tiny_skia::Pixmap {
+    resvg::tiny_skia::Pixmap::load_png(path).unwrap()
+}
+
+#[test]
+fn default_scale_is_twice_the_natural_size() {
+    let (_, natural) = render_flowchart(&["--scale", "1"], "natural.png");
+    let (_, default) = render_flowchart(&[], "default.png");
+    let (natural, default) = (load(&natural), load(&default));
+    assert_eq!(default.width(), natural.width() * 2);
+    assert_eq!(default.height(), natural.height() * 2);
+}
+
+#[test]
+fn scale_changes_dimensions_proportionally() {
+    let (_, natural) = render_flowchart(&["--scale", "1"], "natural.png");
+    let (status, tripled) = render_flowchart(&["--scale", "3"], "tripled.png");
+    assert!(status.success());
+    let (natural, tripled) = (load(&natural), load(&tripled));
+    assert_eq!(tripled.width(), natural.width() * 3);
+    assert_eq!(tripled.height(), natural.height() * 3);
+}
+
+#[test]
+fn background_is_opaque_by_default() {
+    let (_, out) = render_flowchart(&[], "opaque.png");
+    assert_eq!(load(&out).pixel(0, 0).unwrap().alpha(), 255);
+}
+
+#[test]
+fn transparent_leaves_no_background_fill() {
+    let (status, out) = render_flowchart(&["--transparent"], "transparent.png");
+    assert!(status.success());
+    let png = load(&out);
+    assert_eq!(png.pixel(0, 0).unwrap().alpha(), 0);
+    // The diagram itself is still drawn.
+    assert!(png.pixels().iter().any(|p| p.alpha() > 0));
+}
+
+#[test]
+fn invalid_scale_values_fail_and_write_no_png() {
+    for bad in ["0", "-1", "abc", "NaN", "inf"] {
+        let (status, out) = render_flowchart(&["--scale", bad], "bad-scale.png");
+        assert!(!status.success(), "--scale {bad} should fail");
+        assert!(!out.exists(), "--scale {bad} should write nothing");
+    }
+}
+
 #[test]
 fn missing_style_file_fails_and_writes_no_png() {
     let dir = tempdir();

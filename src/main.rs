@@ -28,6 +28,23 @@ struct Cli {
     /// Which of the Style block's light or dark values apply
     #[arg(long, value_enum, default_value_t)]
     color_scheme: css::ColorScheme,
+
+    /// Pixel density: the PNG is this many times the diagram's natural size
+    #[arg(long, default_value_t = 2.0, value_parser = parse_scale)]
+    scale: f32,
+
+    /// Leave the background transparent instead of painting --pele-bg
+    #[arg(long)]
+    transparent: bool,
+}
+
+fn parse_scale(text: &str) -> Result<f32, String> {
+    let scale: f32 = text.parse().map_err(|_| format!("`{text}` is not a number"))?;
+    if scale.is_finite() && scale > 0.0 {
+        Ok(scale)
+    } else {
+        Err(format!("`{text}` must be a number greater than zero"))
+    }
 }
 
 fn main() {
@@ -48,8 +65,8 @@ fn run(cli: Cli) -> Result<()> {
         None => css::StyleBlock::default(),
     };
     let svg = render::diagram_to_svg(&diagram)?;
-    let svg = style::resolve(&svg, &style_block);
-    let png = raster::svg_to_png(&svg)?;
+    let svg = style::resolve(&svg, &style_block, cli.transparent);
+    let png = raster::svg_to_png(&svg, cli.scale)?;
     std::fs::write(&cli.output, png)
         .with_context(|| format!("failed to write {}", cli.output.display()))?;
     println!("{}", cli.output.display());
